@@ -1,0 +1,54 @@
+name: Deploy Stage
+
+on:
+  push:
+    branches:
+      - develop
+
+jobs:
+  deploy:
+    name: Deploy staging
+    runs-on: ubuntu-latest
+
+    steps:
+      # 러너에 체크아웃
+      - name: Check Out
+        uses: actions/checkout@v2
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '7.4'
+
+      # 빌드 캐시 셋업
+      - name: Cache node modules
+        id: node-module-cache
+        uses: actions/cache@v2
+        env:
+          cache-name: cache-node-modules
+        with:
+          # npm cache files are stored in `~/.npm` on Linux/macOS
+          path: |
+            ~/.npm
+            node_modules
+          key: ${{ runner.os }}-build-${{ env.cache-name }}-v3-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-build-${{ env.cache-name }}-v3-${{ hashFiles('**/package-lock.json') }}
+
+      # 빌드 웹팩
+      - name: Install Modules
+        if: steps.node-module-cache.outputs.cache-hit != 'true'
+        run: npm install --loglevel=error
+
+      # 빌드해야할 업데이트가 있으면 배포 스크립트 실행
+      - name: Build
+        run: npm run dev --loglevel=error
+
+      # 테스트 서버로 배포 및 빌드파일 업로드
+      - name: Deploy
+        id: deployer-build
+        uses: evans-kim/action@v1.0.18
+        with:
+          private-key: ${{ secrets.PRIVATE_KEY }}
+          known-hosts: ${{ secrets.KNOWN_HOSTS }}
+          dep: deploy stage -v --has-backend-update=${{ hashFiles('**/*.php') }} # 백엔드 수정이 있을 때만 유닛테스트를 돕니다.
